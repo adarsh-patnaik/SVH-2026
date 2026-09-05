@@ -1,0 +1,31 @@
+{
+  "overall_metrics": {
+    "mae_sec": 47.33320451132504,
+    "mae_min": 0.7888867418554174,
+    "mape_pct": 9.821401975586621,
+    "rmse_sec": 97.1913658567856,
+    "median_ae_sec": 25.612889058887106,
+    "p90_ae_sec": 88.00366322565104,
+    "p95_ae_sec": 140.5202474603418
+  },
+  "segment_type_mae_sec": {
+    "commercial_hub": 69.39704826282215,
+    "market": 62.739990710662674,
+    "narrow_lane": 55.51436522528739,
+    "signalized_corridor": 46.78896845888625,
+    "school_zone": 46.29577093325742,
+    "residential": 38.661072569605345,
+    "highway": 33.027803260694085,
+    "flyover": 28.530781989631485
+  },
+  "segment_type_mape_pct": {
+    "commercial_hub": 10.918554815500036,
+    "market": 12.923108635099357,
+    "narrow_lane": 13.73360391316164,
+    "signalized_corridor": 10.68209803888746,
+    "school_zone": 9.975834111588487,
+    "residential": 7.906250544840662,
+    "highway": 6.389477179338875,
+    "flyover": 7.090730195664198
+  }
+}
