@@ -16,22 +16,53 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U transitx -d transitx"]
       interval: 5s
+  emqx:
+    image: emqx/emqx:5.8.0
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true" # MVP only; require per-device credentials before deployment.
+    ports:
+      - "1883:1883"
+      - "18083:18083"
+    healthcheck:
+      test: ["CMD-SHELL", "emqx ctl status"]
+      interval: 10s
       timeout: 5s
       retries: 10
 
   redis:
-    image: redis:7-alpine
-    container_name: transitx-redis
+    image: redis:7.4-alpine
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  emqx:
-    image: emqx:5
-    container_name: transitx-emqx
+  ingestion-worker:
+    build: ../ingestion-worker
+    environment:
+      MQTT_BROKER: tcp://emqx:1883
+      MQTT_TOPIC: gps/+/ping
+      REDIS_ADDR: redis:6379
+    depends_on:
+      emqx:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api-gateway:
+    build: ../api-gateway
+    environment:
+      REDIS_URL: redis://redis:6379/0
     ports:
-      - "1883:1883"
-      - "8083:8083"
-      - "18083:18083"
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
-  postgres_data:
+  redis-data:

@@ -1,0 +1,16 @@
+{
+  "objective": "regression",
+  "metric": "mae",
+  "boosting_type": "gbdt",
+  "verbosity": -1,
+  "n_jobs": -1,
+  "learning_rate": 0.07112422668158716,
+  "num_leaves": 21,
+  "max_depth": 10,
+  "min_child_samples": 70,
+  "subsample": 0.7137017332034828,
+  "subsample_freq": 1,
+  "colsample_bytree": 0.7050213529560302,
+  "reg_alpha": 0.01334697757417809,
+  "reg_lambda": 0.08730885649333642
+}
