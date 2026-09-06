@@ -1,10 +1,5 @@
 """
 app/models/schemas.py
-
-Request/response contracts for the ETA prediction endpoint. These field
-names intentionally match the feature columns used in ml-engine/src/train_model.py
-so there's no translation layer needed between what the Go ingestion worker /
-Redis state produces and what this API expects.
 """
 
 from pydantic import BaseModel, Field
@@ -39,7 +34,6 @@ class EtaPredictionResponse(BaseModel):
 
 
 class TripEtaRequest(BaseModel):
-    """Predict cumulative ETA across multiple upcoming segments (a full stop-to-stop trip)."""
     segments: List[SegmentFeatures]
 
 
@@ -57,6 +51,8 @@ class TripEtaResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status: str  # "ok" | "degraded" | "model_not_loaded"
     model_loaded: bool
     model_version: str
+    self_test_ok: Optional[bool]
+    self_test_detail: str
