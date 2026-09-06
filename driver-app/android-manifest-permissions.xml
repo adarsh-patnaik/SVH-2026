@@ -1,0 +1,35 @@
+<!--
+  These permissions go inside the <manifest> tag of
+  android/app/src/main/AndroidManifest.xml once you run
+  `npx react-native init` or add the android/ folder via
+  `npx react-native-community/cli` to generate the native project.
+
+  This file is just a reference snippet — copy these into the real
+  generated AndroidManifest.xml, don't use this file directly.
+-->
+
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION"
+    tools:node="remove" />
+<!--
+  ^ We explicitly do NOT want mock location permission — this line
+  ensures it stays removed even if a dependency's manifest tries to
+  merge it in. Requires xmlns:tools="http://schemas.android.com/tools"
+  on the <manifest> root tag.
+-->
+
+<!--
+  Inside <application>, the foreground service used by
+  react-native-background-actions needs to be declared, e.g.:
+
+  <service
+      android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
+      android:foregroundServiceType="location" />
+-->

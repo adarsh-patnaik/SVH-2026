@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package gatisync.telemetry;
+
+option go_package = "gatisync/ingestion-worker/internal/telemetry";
+
+// Sent by a driver device to gps/<bus_id>/ping over MQTT, encoded as Protobuf.
+// CONFIRMED against backend repo (ingestion-worker/proto/gps_ping.proto) —
+// do not change field numbers/types without checking with backend dev,
+// since the Go worker's hand-written struct tags must match exactly.
+message GPSPing {
+  string bus_id = 1;
+  string route_id = 2;
+  double latitude = 3;
+  double longitude = 4;
+  float speed_mps = 5;
+  float heading_degrees = 6;
+  int64 captured_at_unix_ms = 7;
+}
