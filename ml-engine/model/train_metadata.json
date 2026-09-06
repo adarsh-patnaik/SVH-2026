@@ -1,0 +1,49 @@
+{
+  "metrics": {
+    "mae_seconds": 47.33320451132504,
+    "mae_minutes": 0.7888867418554174,
+    "median_ae_seconds": 25.612889058887106,
+    "rmse_seconds": 97.1913658567856,
+    "mape_percent": 9.821401975586621,
+    "best_iteration": 346,
+    "num_test_samples": 12600,
+    "test_date_start": "2025-12-04",
+    "test_date_end": "2025-12-31"
+  },
+  "parameters": {
+    "objective": "regression",
+    "metric": "mae",
+    "boosting_type": "gbdt",
+    "verbosity": -1,
+    "n_jobs": -1,
+    "learning_rate": 0.07112422668158716,
+    "num_leaves": 21,
+    "max_depth": 10,
+    "min_child_samples": 70,
+    "subsample": 0.7137017332034828,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.7050213529560302,
+    "reg_alpha": 0.01334697757417809,
+    "reg_lambda": 0.08730885649333642
+  },
+  "features": [
+    "route_id",
+    "segment_id",
+    "segment_type",
+    "time_of_day_bin",
+    "day_of_week",
+    "is_weekend",
+    "is_holiday",
+    "hour_of_day",
+    "distance_km",
+    "current_speed",
+    "previous_segment_speed",
+    "weather_severity"
+  ],
+  "categoricals": [
+    "route_id",
+    "segment_id",
+    "segment_type",
+    "time_of_day_bin"
+  ]
+}
