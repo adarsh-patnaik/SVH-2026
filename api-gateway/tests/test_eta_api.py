@@ -1,99 +1,154 @@
 """
 tests/test_eta_api.py
 
-Basic smoke tests. Requires the model files to be present at
-app/ml_models/ for the prediction tests to pass — the health check will
-still work even without them.
+CHANGELOG (post-review fixes):
+- Tests now REQUIRE the model to be present and assert on actual predicted
+  values within a plausible range — not just "status code was 200 or 503".
+- Added a dedicated test for the categorical encoding fix: predicts the
+  same segment features twice using two different dict-construction orders
+  and asserts the results are IDENTICAL.
+- Added a test for an unseen category (a route_id that never existed in
+  training) to confirm it's handled gracefully rather than crashing.
+- FIXED: `client` is now a pytest fixture that opens TestClient as a
+  context manager (`with TestClient(app) as c:`). Without this, FastAPI's
+  `lifespan` startup handler — which calls eta_service.load() — never runs,
+  and every test fails with "Model is not loaded" even though the real
+  server works fine. This was caught when running the suite for real.
 
 Run with:
-    pytest tests/
+    python -m pytest tests/ -v
 """
 
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.services.eta_service import eta_service
 
-client = TestClient(app)
+
+@pytest.fixture(scope="module")
+def client():
+    # Context-manager form is REQUIRED for lifespan (startup/shutdown)
+    # events to fire on this FastAPI app.
+    with TestClient(app) as c:
+        yield c
 
 
-def test_health_endpoint_responds():
+BASE_SEGMENT = {
+    "route_id": None,
+    "segment_id": None,
+    "segment_type": None,
+    "time_of_day_bin": None,
+    "day_of_week": 1,
+    "is_weekend": 0,
+    "is_holiday": 0,
+    "hour_of_day": 9.25,
+    "distance_km": 1.2,
+    "current_speed": 13.5,
+    "previous_segment_speed": 15.0,
+    "weather_severity": 0,
+}
+
+
+def _known_good_segment():
+    """Builds a segment using real category values from the loaded model.
+    Must be called AFTER the client fixture has run at least once (so the
+    lifespan startup has fired and eta_service is loaded)."""
+    assert eta_service.is_loaded, (
+        "Model is not loaded — copy eta_lightgbm.txt and categorical_maps.json "
+        "into app/ml_models/ before running tests."
+    )
+    seg = dict(BASE_SEGMENT)
+    seg["route_id"] = eta_service._category_lists["route_id"][0]
+    seg["segment_id"] = eta_service._category_lists["segment_id"][0]
+    seg["segment_type"] = eta_service._category_lists["segment_type"][0]
+    seg["time_of_day_bin"] = eta_service._category_lists["time_of_day_bin"][0]
+    return seg
+
+
+def test_health_reports_real_self_test_result(client):
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
-    assert "status" in body
-    assert "model_loaded" in body
+    assert body["model_loaded"] is True
+    assert body["status"] == "ok", f"Health self-test failed: {body.get('self_test_detail')}"
+    assert body["self_test_ok"] is True
+    assert len(body["model_version"]) == 12  # sha256 hash prefix
 
 
-def test_predict_eta_single_segment():
-    payload = {
-        "segment": {
-            "route_id": "R1",
-            "segment_id": "R1_S1",
-            "segment_type": "market",
-            "time_of_day_bin": "09:00-09:15",
-            "day_of_week": 1,
-            "is_weekend": 0,
-            "is_holiday": 0,
-            "hour_of_day": 9.25,
-            "distance_km": 1.2,
-            "current_speed": 13.5,
-            "previous_segment_speed": 15.0,
-            "weather_severity": 0,
-        }
-    }
+def test_predict_eta_returns_plausible_value(client):
+    payload = {"segment": _known_good_segment()}
     response = client.post("/predict-eta", json=payload)
-    # 503 is acceptable in CI environments without the model file present;
-    # 200 is the real pass condition once the model is copied in.
-    assert response.status_code in (200, 503)
-    if response.status_code == 200:
-        body = response.json()
-        assert body["predicted_travel_time_seconds"] > 0
-        assert body["segment_id"] == "R1_S1"
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    seconds = body["predicted_travel_time_seconds"]
+
+    assert seconds > 0, "Predicted time must be positive"
+    assert seconds < 3600, "Predicted time for one segment should not exceed an hour"
+    assert body["predicted_travel_time_minutes"] == round(seconds / 60, 2)
 
 
-def test_predict_eta_missing_speed_is_allowed():
-    """Sensor pings can drop — current_speed/previous_segment_speed must be optional."""
-    payload = {
-        "segment": {
-            "route_id": "R1",
-            "segment_id": "R1_S1",
-            "segment_type": "market",
-            "time_of_day_bin": "09:00-09:15",
-            "day_of_week": 1,
-            "is_weekend": 0,
-            "is_holiday": 0,
-            "hour_of_day": 9.25,
-            "distance_km": 1.2,
-            "current_speed": None,
-            "previous_segment_speed": None,
-            "weather_severity": 0,
-        }
-    }
-    response = client.post("/predict-eta", json=payload)
-    assert response.status_code in (200, 503)
+def test_prediction_is_stable_regardless_of_dict_key_order(client):
+    """Guards against the categorical-encoding bug specifically."""
+    seg_a = _known_good_segment()
+    seg_b = {k: seg_a[k] for k in reversed(list(seg_a.keys()))}
+
+    resp_a = client.post("/predict-eta", json={"segment": seg_a})
+    resp_b = client.post("/predict-eta", json={"segment": seg_b})
+
+    assert resp_a.status_code == 200
+    assert resp_b.status_code == 200
+    assert (
+        resp_a.json()["predicted_travel_time_seconds"]
+        == resp_b.json()["predicted_travel_time_seconds"]
+    ), "Prediction should be identical regardless of input dict ordering"
 
 
-def test_trip_eta_sums_segments():
-    payload = {
-        "segments": [
-            {
-                "route_id": "R1", "segment_id": "R1_S1", "segment_type": "market",
-                "time_of_day_bin": "09:00-09:15", "day_of_week": 1, "is_weekend": 0,
-                "is_holiday": 0, "hour_of_day": 9.25, "distance_km": 1.2,
-                "current_speed": 13.5, "previous_segment_speed": 15.0, "weather_severity": 0,
-            },
-            {
-                "route_id": "R1", "segment_id": "R1_S2", "segment_type": "residential",
-                "time_of_day_bin": "09:15-09:30", "day_of_week": 1, "is_weekend": 0,
-                "is_holiday": 0, "hour_of_day": 9.4, "distance_km": 2.5,
-                "current_speed": 20.0, "previous_segment_speed": 13.5, "weather_severity": 0,
-            },
-        ]
-    }
-    response = client.post("/predict-eta/trip", json=payload)
-    assert response.status_code in (200, 503)
-    if response.status_code == 200:
-        body = response.json()
-        assert len(body["breakdown"]) == 2
-        assert body["total_predicted_seconds"] == sum(
-            s["predicted_travel_time_seconds"] for s in body["breakdown"]
-        )
+def test_unseen_category_does_not_crash(client):
+    """A route_id that never existed during training should be handled
+    gracefully (encoded as missing/NaN category), not crash the request."""
+    seg = _known_good_segment()
+    seg["route_id"] = "ROUTE_THAT_DOES_NOT_EXIST_IN_TRAINING"
+
+    response = client.post("/predict-eta", json={"segment": seg})
+    assert response.status_code == 200, (
+        "An unseen category should still produce a response, not a crash"
+    )
+
+
+def test_missing_speed_sensor_data_is_allowed(client):
+    seg = _known_good_segment()
+    seg["current_speed"] = None
+    seg["previous_segment_speed"] = None
+
+    response = client.post("/predict-eta", json={"segment": seg})
+    assert response.status_code == 200
+    assert response.json()["predicted_travel_time_seconds"] > 0
+
+
+def test_trip_eta_sums_segments_correctly(client):
+    seg1 = _known_good_segment()
+    seg2 = _known_good_segment()
+    seg2["distance_km"] = 2.5
+
+    response = client.post("/predict-eta/trip", json={"segments": [seg1, seg2]})
+    assert response.status_code == 200
+
+    body = response.json()
+    assert len(body["breakdown"]) == 2
+    expected_total = sum(s["predicted_travel_time_seconds"] for s in body["breakdown"])
+    assert body["total_predicted_seconds"] == round(expected_total, 1)
+
+
+def test_rate_limit_blocks_excessive_requests(client):
+    """Fires 25 requests rapidly — the 21st onward should hit the 20/minute
+    rate limit and return 429."""
+    seg = _known_good_segment()
+    payload = {"segment": seg}
+
+    statuses = [client.post("/predict-eta", json=payload).status_code for _ in range(25)]
+
+    assert 429 in statuses, (
+        "Expected at least one 429 (rate limited) response among 25 rapid "
+        "requests, but rate limiting did not trigger."
+    )
