@@ -1,14 +1,16 @@
 """
 app/routers/eta.py
 
-CHANGELOG (post-review fixes):
-- /health now runs a real self-test prediction, not just an is_loaded check.
-  Returns "degraded" (still 200, so load balancers don't yank a recoverable
-  pod, but visibly flagged) if the model loaded but self-test fails.
-- Rate limiting added via slowapi: 20 requests/minute per IP on the
-  prediction endpoints, matching the "20 req/min per IP" spec from the
-  original project doc's Security & Privacy section.
+CHANGELOG (second review round):
+- Exceptions are no longer stringified straight into the HTTP response body.
+  `logger.exception(...)` logs the full traceback server-side; the client
+  gets a generic, non-leaking message. Today's failure modes are benign
+  (bad category, NaN), but raw exception text in a public response is a
+  bad habit that eventually leaks a file path, internal config value, or
+  stack detail once the code changes.
 """
+
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -23,7 +25,13 @@ from app.models.schemas import (
 from app.services.eta_service import eta_service, EtaModelNotLoadedError
 from app.rate_limit import limiter
 
+logger = logging.getLogger("gatisync-eta-api")
 router = APIRouter()
+
+GENERIC_PREDICTION_ERROR = (
+    "Prediction failed due to invalid or unsupported input. "
+    "Check that all required fields are present and within expected ranges."
+)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -56,8 +64,12 @@ def predict_eta(request: Request, body: EtaPredictionRequest):
         seconds = eta_service.predict_segment_seconds(body.segment.model_dump())
     except EtaModelNotLoadedError:
         raise HTTPException(status_code=503, detail="ETA model is not loaded yet.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Prediction failed: {e}")
+    except Exception:
+        logger.exception(
+            f"Prediction failed for route_id={body.segment.route_id!r} "
+            f"segment_id={body.segment.segment_id!r}"
+        )
+        raise HTTPException(status_code=400, detail=GENERIC_PREDICTION_ERROR)
 
     return EtaPredictionResponse(
         route_id=body.segment.route_id,
@@ -71,6 +83,8 @@ def predict_eta(request: Request, body: EtaPredictionRequest):
 @router.post("/predict-eta/trip", response_model=TripEtaResponse)
 @limiter.limit("20/minute")
 def predict_trip_eta(request: Request, body: TripEtaRequest):
+    # Empty-list case is now also caught by schemas.py's min_length=1, but
+    # kept here too as a defensive belt-and-suspenders check.
     if not body.segments:
         raise HTTPException(status_code=400, detail="At least one segment is required.")
 
@@ -79,8 +93,12 @@ def predict_trip_eta(request: Request, body: TripEtaRequest):
         seconds_list = eta_service.predict_trip_seconds(segment_dicts)
     except EtaModelNotLoadedError:
         raise HTTPException(status_code=503, detail="ETA model is not loaded yet.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Prediction failed: {e}")
+    except Exception:
+        logger.exception(
+            f"Trip prediction failed for route_id={body.segments[0].route_id!r}, "
+            f"{len(body.segments)} segment(s)"
+        )
+        raise HTTPException(status_code=400, detail=GENERIC_PREDICTION_ERROR)
 
     breakdown = [
         SegmentEtaBreakdown(segment_id=seg.segment_id, predicted_travel_time_seconds=secs)

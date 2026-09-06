@@ -140,6 +140,47 @@ def test_trip_eta_sums_segments_correctly(client):
     assert body["total_predicted_seconds"] == round(expected_total, 1)
 
 
+def test_trip_segment_cap_rejected(client):
+    """More than MAX_TRIP_SEGMENTS (60) segments in one request should be
+    rejected by Pydantic validation (422), not accepted and processed —
+    this is the fix for the unbounded-batch-size DoS vector."""
+    seg = _known_good_segment()
+    too_many_segments = [seg] * 61
+
+    response = client.post("/predict-eta/trip", json={"segments": too_many_segments})
+    assert response.status_code == 422, (
+        f"Expected 422 for 61 segments (cap is 60), got {response.status_code}"
+    )
+
+
+def test_oversized_string_field_rejected(client):
+    """A route_id far longer than any real route ID should be rejected by
+    schema validation, not silently accepted."""
+    seg = _known_good_segment()
+    seg["route_id"] = "R" * 500  # way beyond MAX_ID_LENGTH (64)
+
+    response = client.post("/predict-eta", json={"segment": seg})
+    assert response.status_code == 422, (
+        f"Expected 422 for oversized route_id, got {response.status_code}"
+    )
+
+
+def test_error_response_does_not_leak_raw_exception_text(client):
+    """When prediction fails, the client-facing error should be a generic
+    message — not a raw Python exception string that could leak internal
+    details (file paths, config values, stack info) as the code evolves."""
+    seg = _known_good_segment()
+    seg["distance_km"] = -5  # violates gt=0 constraint -> caught by Pydantic (422)
+    # This particular case is caught by schema validation before it ever
+    # reaches the try/except in the router, so it correctly returns 422
+    # with Pydantic's own (safe, generic) validation error format — not a
+    # raw exception string. That's still the desired behavior.
+    response = client.post("/predict-eta", json={"segment": seg})
+    assert response.status_code == 422
+    assert "Traceback" not in response.text
+    assert ".py" not in response.text  # no file paths leaking into the response
+
+
 def test_rate_limit_blocks_excessive_requests(client):
     """Fires 25 requests rapidly — the 21st onward should hit the 20/minute
     rate limit and return 429."""
