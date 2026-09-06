@@ -1,0 +1,188 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+/* ---------------------------------------------------------------------
+   GatiSync design tokens
+   Light and dark are each tuned as their own palette (not an inversion):
+   light leans on a cool paper background with deep indigo for trust;
+   dark leans on true charcoal with the same indigo brightened, plus a
+   marigold "live" accent that reads clearly on both.
+--------------------------------------------------------------------- */
+
+:root,
+[data-theme="light"] {
+  --background: #f4f5f3;
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --foreground: #12151c;
+  --muted: #63697a;
+  --border: #e4e6e9;
+  --primary: #2643c6;
+  --primary-foreground: #ffffff;
+  --success: #1f9d66;
+  --warning: #b5720f;
+  --danger: #d33d3d;
+  --live: #de8a1c;
+  --map-overlay: rgba(18, 21, 28, 0.06);
+  --shadow-elevated: 0 1px 2px rgba(18, 21, 28, 0.04), 0 8px 24px rgba(18, 21, 28, 0.08);
+  --map-tiles-filter: none;
+}
+
+[data-theme="dark"] {
+  --background: #0d0f14;
+  --surface: #171a21;
+  --surface-elevated: #1e222b;
+  --foreground: #eef0f4;
+  --muted: #8b93a5;
+  --border: #2a2e38;
+  --primary: #6d85ff;
+  --primary-foreground: #0d0f14;
+  --success: #3fc98a;
+  --warning: #e8ac47;
+  --danger: #f2685f;
+  --live: #f2a93b;
+  --map-overlay: rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --map-tiles-filter: brightness(0.82) contrast(1.08) saturate(0.9) invert(1) hue-rotate(180deg);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-live: var(--live);
+  /* System-font stack, deliberately: zero font bytes to download keeps
+     first paint fast on 2G/3G, which matters more here than a bespoke
+     typeface. Each OS's default UI font already reads clean and modern. */
+  --font-sans: "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Roboto Mono", "Cascadia Code", Consolas, monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth but cheap theme transition — background/color only, no layout cost. */
+body,
+.theme-transition {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Leaflet chrome overrides so the map matches the theme instead of
+   shipping its own default white attribution bar / grey controls. */
+.leaflet-container {
+  background: var(--background);
+  font-family: var(--font-sans);
+}
+.leaflet-tile-pane {
+  filter: var(--map-tiles-filter);
+}
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--surface) 85%, transparent) !important;
+  color: var(--muted) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--muted) !important;
+}
+
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--live) 0%, transparent); }
+}
+
+@keyframes marker-ring {
+  0% { transform: scale(0.9); opacity: 0.55; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ---------------------------------------------------------------------
+   Z-index scale (single source of truth — every layer below uses one
+   of these tiers so nothing floating over the map can ever paint above
+   the bottom-sheet modal, and vice versa).
+     10  map itself (Leaflet's own panes)
+     20  floating map chrome: search bar, offline banner, persistent
+         bus card / empty state, zoom + locate controls
+     30  search results dropdown (must clear the chrome above it)
+     50  bottom sheet modal (always topmost — it's the one true overlay)
+--------------------------------------------------------------------- */
+
+/* Lets MapControls dock itself above the persistent bottom bus card on
+   mobile without overlapping it, purely via CSS — page.tsx sets
+   --dock-offset only when that card/empty-state is actually showing. */
+.gs-map-controls {
+  bottom: var(--dock-offset, 1.5rem);
+  transition: bottom 220ms ease;
+}
+@media (min-width: 768px) {
+  .gs-map-controls {
+    bottom: 1.5rem !important;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    color-mix(in srgb, var(--border) 55%, var(--surface)) 37%,
+    var(--border) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

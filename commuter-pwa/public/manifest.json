@@ -1,0 +1,21 @@
+{
+  "name": "GatiSync Commuter",
+  "short_name": "GatiSync",
+  "description": "Ultra-light real-time public transit tracking for Tier-2 and Tier-3 cities.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f5f3",
+  "theme_color": "#2643c6",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
